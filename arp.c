@@ -15,8 +15,8 @@ static int handle_packet(int sock, unsigned char *buf, int len)
 	}
 
 	eh = (struct ether_header *)p;
-    p += sizeof(struct ether_header);
-    lest -= sizeof(struct ether_header);
+	p += sizeof(struct ether_header);
+	lest -= sizeof(struct ether_header);
 
 	if (ntohs(eh->ether_type) == ETHERTYPE_ARP) 
         printf("ARP: Packet[%dbytes]\n", len);
@@ -94,7 +94,6 @@ static int create_socket(char *dev)
 	}
 
 	return sock;
-
 }
 
 static void init_arp_data(struct arp_t *p)
@@ -121,9 +120,9 @@ int main(int argc, char **argv)
 	unsigned char buf[BUFSIZE];
 
 	if (argc <= 1) {
-        fprintf(stderr, "Too few options\n");
-        usage();
-    }
+		fprintf(stderr, "Too few options\n");
+		usage();
+	}
 
 	// initialize arp data
 	init_arp_data(&at);
@@ -149,7 +148,7 @@ int main(int argc, char **argv)
 	}
 
 	argv += optind;
-    argc -= optind;
+	argc -= optind;
 
     if (argc > 0) {
         fprintf(stderr, "Too many options\n");
@@ -160,10 +159,10 @@ int main(int argc, char **argv)
 		printf("Interface: %s\n", at.dev);
 
 	// deamonize if daemon flag
-    if (at.daemon) {
-        if ((daemon(1,1)) != 0) {
-            perror("daaemon: ");
-            exit(1);
+	if (at.daemon) {
+		if ((daemon(1,1)) != 0) {
+			perror("daaemon: ");
+			exit(1);
         }
     }
 
@@ -178,7 +177,7 @@ int main(int argc, char **argv)
 	if (at.debug) {
 		printf("IPAddress: %s\n", inet_ntoa(at.inaddr));
 		printf("MAC Address : %02x:%02x:%02x:%02x:%02x:%02x\n",
-                at.eth.ether_addr_octet[0], at.eth.ether_addr_octet[1],
+				at.eth.ether_addr_octet[0], at.eth.ether_addr_octet[1],
 				at.eth.ether_addr_octet[2], at.eth.ether_addr_octet[3], 
 				at.eth.ether_addr_octet[4], at.eth.ether_addr_octet[5]);
 	}
