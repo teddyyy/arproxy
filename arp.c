@@ -1,6 +1,8 @@
 #include "arp.h"
 
-static char *my_ether_ntoa_r(u_char *hwaddr, char *buf, socklen_t size)
+struct arp_t at;
+
+static char *ether_ntoa_r(u_char *hwaddr, char *buf, socklen_t size)
 {
     snprintf(buf, size, "%02x:%02x:%02x:%02x:%02x:%02x",
         hwaddr[0],hwaddr[1],hwaddr[2],hwaddr[3],hwaddr[4],hwaddr[5]);
@@ -8,12 +10,33 @@ static char *my_ether_ntoa_r(u_char *hwaddr, char *buf, socklen_t size)
     return buf;
 }
 
-static int handle_arp(unsigned char *data, int len)
+static char *arp_ip2str(u_int8_t *ip, char *buf, socklen_t size)
+{
+    snprintf(buf, size, "%u.%u.%u.%u",ip[0],ip[1],ip[2],ip[3]);
+
+    return buf;
+}
+
+static int handle_arp(int sock, unsigned char *data, int len)
 {
 	unsigned char *p;
 	int lest;	
 	struct ether_arp *arp;
 	char buf[256];
+
+	static char *op[] = {
+        "undefine",
+        "ARP request",
+        "ARP reply",
+        "RARP request",
+        "RARP reply",
+        "undefine",
+        "undefine",
+        "undefine",
+        "INARP request",
+        "INARP reply",
+        "ATM ARP NAK"
+    };
 
 	p = data;
 	lest = len;
@@ -27,13 +50,24 @@ static int handle_arp(unsigned char *data, int len)
 	p += sizeof(struct ether_arp);
 	lest -= sizeof(struct ether_arp);
 
-	printf("source=%s " ,my_ether_ntoa_r(arp->arp_sha, buf, sizeof(buf)));
-	printf("destnation=%s\n" ,my_ether_ntoa_r(arp->arp_tha, buf, sizeof(buf)));
+	if (at.debug) {
+		printf("srcmac=%s ", ether_ntoa_r(arp->arp_sha, buf, sizeof(buf)));
+		printf("dstmac=%s ", ether_ntoa_r(arp->arp_tha, buf, sizeof(buf)));
+		printf("srcip=%s ", arp_ip2str(arp->arp_spa, buf, sizeof(buf)));
+		printf("dstip=%s ", arp_ip2str(arp->arp_tpa, buf, sizeof(buf)));
+		printf("(%s)\n", op[ntohs(arp->arp_op)]);
+	}
+
+	arp_ip2str(arp->arp_tpa, buf, sizeof(buf));
+
+	// target ip address is me!
+	if (at.inaddr.s_addr == inet_addr(buf))
+		printf("dstip=%s\n", buf);
 
 	return 0;
 }
 
-static int handle_packet(int sock, unsigned char *buf, int len)
+static int process_packet(int sock, unsigned char *buf, int len)
 {
 	unsigned char *p;
 	int lest;
@@ -52,7 +86,7 @@ static int handle_packet(int sock, unsigned char *buf, int len)
 	lest -= sizeof(struct ether_header);
 
 	if (ntohs(eh->ether_type) == ETHERTYPE_ARP)  
-		handle_arp(p, lest);
+		handle_arp(sock, p, lest);
 
 	return 0;
 }
@@ -149,7 +183,6 @@ static void usage()
 int main(int argc, char **argv)
 {
 	int opt, sock, len;
-	struct arp_t at;
 	unsigned char buf[BUFSIZE];
 
 	if (argc <= 1) {
@@ -219,7 +252,7 @@ int main(int argc, char **argv)
 		if ((len = read(sock, buf, sizeof(buf))) <= 0)
 			perror("read");
 		else
-			handle_packet(sock, buf, len);
+			process_packet(sock, buf, len);
 	}
 
 	return 0;
