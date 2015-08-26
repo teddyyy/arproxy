@@ -8,6 +8,7 @@
 #include <sys/socket.h>
 #include <net/if.h>
 #include <linux/if_packet.h>
+#include <netinet/if_ether.h>
 #include <net/ethernet.h> 
 
 #define DEVSIZE	16

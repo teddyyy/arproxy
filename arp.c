@@ -1,5 +1,38 @@
 #include "arp.h"
 
+static char *my_ether_ntoa_r(u_char *hwaddr, char *buf, socklen_t size)
+{
+    snprintf(buf, size, "%02x:%02x:%02x:%02x:%02x:%02x",
+        hwaddr[0],hwaddr[1],hwaddr[2],hwaddr[3],hwaddr[4],hwaddr[5]);
+
+    return buf;
+}
+
+static int handle_arp(unsigned char *data, int len)
+{
+	unsigned char *p;
+	int lest;	
+	struct ether_arp *arp;
+	char buf[256];
+
+	p = data;
+	lest = len;
+
+	if (lest < sizeof(struct ether_arp)) {
+		fprintf(stderr, "lest(%d) < sizeof(struct ether_arp)\n", lest);
+		return -1;
+	}
+	
+	arp = (struct ether_arp *)p;
+	p += sizeof(struct ether_arp);
+	lest -= sizeof(struct ether_arp);
+
+	printf("source=%s " ,my_ether_ntoa_r(arp->arp_sha, buf, sizeof(buf)));
+	printf("destnation=%s\n" ,my_ether_ntoa_r(arp->arp_tha, buf, sizeof(buf)));
+
+	return 0;
+}
+
 static int handle_packet(int sock, unsigned char *buf, int len)
 {
 	unsigned char *p;
@@ -18,8 +51,8 @@ static int handle_packet(int sock, unsigned char *buf, int len)
 	p += sizeof(struct ether_header);
 	lest -= sizeof(struct ether_header);
 
-	if (ntohs(eh->ether_type) == ETHERTYPE_ARP) 
-        printf("ARP: Packet[%dbytes]\n", len);
+	if (ntohs(eh->ether_type) == ETHERTYPE_ARP)  
+		handle_arp(p, lest);
 
 	return 0;
 }
@@ -31,7 +64,7 @@ static void get_local_address(struct arp_t *p)
 	char *dev = p->dev;
 
 	if ((sock = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
-		perror("socket:");
+		perror("socket");
 		exit(1);
 	}
 
@@ -41,7 +74,7 @@ static void get_local_address(struct arp_t *p)
 
 	// IP Address
 	if (ioctl(sock, SIOCGIFADDR, &ifr) < 0) {
-		perror("ioctl:");
+		perror("ioctl");
 		close(sock);
 		exit(1);
 	}
@@ -49,7 +82,7 @@ static void get_local_address(struct arp_t *p)
 
 	// MAC Address
 	if (ioctl(sock, SIOCGIFHWADDR, &ifr) < 0) {
-		perror("ioctl:");
+		perror("ioctl");
 		close(sock);
 		exit(1);
 	}
@@ -66,13 +99,13 @@ static int create_socket(char *dev)
 	memset(&saddr, 0, sizeof(struct sockaddr_ll));
 
 	if ((sock = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) < 0) {
-		perror("socket:");
+		perror("socket");
 		exit(1);
 	}
 
 	strcpy(ifr.ifr_name, dev);
 	if (ioctl (sock, SIOCGIFINDEX, &ifr) < 0) {
-		perror("ioctl:");
+		perror("ioctl");
 		close(sock);
 		exit(1);
 	}
@@ -82,14 +115,14 @@ static int create_socket(char *dev)
 	saddr.sll_protocol = htons (ETH_P_ALL);
 
 	if (bind(sock, (struct sockaddr *)&saddr, sizeof(saddr)) < 0) {
-		perror("bind:");
+		perror("bind");
 		close(sock);
 		return -1;
 	}
 
 	ifr.ifr_flags = ifr.ifr_flags | IFF_PROMISC;
 	if (ioctl (sock, SIOCGIFFLAGS, &ifr) < 0) {
-		perror("ioctl:");
+		perror("ioctl");
 		exit(1);
 	}
 
@@ -161,7 +194,7 @@ int main(int argc, char **argv)
 	// deamonize if daemon flag
 	if (at.daemon) {
 		if ((daemon(1,1)) != 0) {
-			perror("daaemon: ");
+			perror("daaemon");
 			exit(1);
         }
     }
