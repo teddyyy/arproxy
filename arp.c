@@ -17,44 +17,42 @@ static char *arp_ip2str(u_int8_t *ip, char *buf, socklen_t size)
     return buf;
 }
 
-static int build_arp_packet(struct ether_arp *arp)
+static struct arphdr_t* build_arp_packet(struct ether_arp *arp)
 {
-	struct ether_header *eh;
-	struct ether_arp *newarp;
-
-	// initialize
-	eh = (struct ether_header *)malloc(sizeof(*eh));
-	newarp = (struct ether_arp *)malloc(sizeof(*newarp));
+	struct arphdr_t newarp;
+	struct arphdr_t *p;
 
 	// ethernet header
-	memcpy(eh->ether_dhost, arp->arp_sha, ETHER_ADDR_LEN);
-	memcpy(eh->ether_shost, at.eth.ether_addr_octet, ETHER_ADDR_LEN);
-	eh->ether_type = ETHERTYPE_ARP;
-
+	memcpy(newarp.eh.ether_dhost, arp->arp_sha, ETHER_ADDR_LEN);
+	memcpy(newarp.eh.ether_shost, at.eth.ether_addr_octet, ETHER_ADDR_LEN);
+	newarp.eh.ether_type = ETHERTYPE_ARP;
 
 	// arp header	
-	newarp->arp_hrd = htons(ARPHRD_ETHER);
-	newarp->arp_pro = htons(ETHERTYPE_IP); 
-	newarp->arp_hln = ETHER_ADDR_LEN;
-	newarp->arp_hln = 4;
-	newarp->arp_op = htons(ARPOP_REPLY);
+	newarp.arp.arp_hrd = htons(ARPHRD_ETHER);
+	newarp.arp.arp_pro = htons(ETHERTYPE_IP); 
+	newarp.arp.arp_hln = ETHER_ADDR_LEN;
+	newarp.arp.arp_hln = 4;
+	newarp.arp.arp_op = htons(ARPOP_REPLY);
 
 	// copy mac address
-	memcpy(newarp->arp_tha, arp->arp_sha, ETHER_ADDR_LEN);
-	memcpy(newarp->arp_sha, at.eth.ether_addr_octet, ETHER_ADDR_LEN);
+	memcpy(newarp.arp.arp_tha, arp->arp_sha, ETHER_ADDR_LEN);
+	memcpy(newarp.arp.arp_sha, at.eth.ether_addr_octet, ETHER_ADDR_LEN);
 
 	// copy ip address
-	memcpy(newarp->arp_tpa, arp->arp_spa, sizeof(struct in_addr));
-	memcpy(newarp->arp_spa, &at.inaddr, sizeof(struct in_addr));
+	memcpy(newarp.arp.arp_tpa, arp->arp_spa, sizeof(struct in_addr));
+	memcpy(newarp.arp.arp_spa, &at.inaddr, sizeof(struct in_addr));
 
-	return 0;
+	p = &newarp;
+
+	return p;
 }
 
-static int handle_arp(int sock, unsigned char *data, int len)
+static int handle_arp(unsigned char *data, int len)
 {
 	unsigned char *p;
 	int lest;	
 	struct ether_arp *arp;
+ 	struct arphdr_t *newarp;
 	char buf[256];
 
 	static char *op[] = {
@@ -88,13 +86,14 @@ static int handle_arp(int sock, unsigned char *data, int len)
 	// target ip address is me!
 	if (at.inaddr.s_addr == inet_addr(buf)) {
 		printf("dstip=%s\n", buf);
-		build_arp_packet(arp);
+		newarp = build_arp_packet(arp);
+		write(at.sock, newarp, sizeof(struct arphdr_t));
 	}
 
 	return 0;
 }
 
-static int process_packet(int sock, unsigned char *buf, int len)
+static int process_packet(unsigned char *buf, int len)
 {
 	unsigned char *p;
 	int lest;
@@ -113,7 +112,7 @@ static int process_packet(int sock, unsigned char *buf, int len)
 	lest -= sizeof(struct ether_header);
 
 	if (ntohs(eh->ether_type) == ETHERTYPE_ARP)  
-		handle_arp(sock, p, lest);
+		handle_arp(p, lest);
 
 	return 0;
 }
@@ -279,7 +278,7 @@ int main(int argc, char **argv)
 		if ((len = read(at.sock, buf, sizeof(buf))) <= 0)
 			perror("read");
 		else
-			process_packet(at.sock, buf, len);
+			process_packet(buf, len);
 	}
 
 	return 0;

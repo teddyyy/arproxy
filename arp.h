@@ -22,3 +22,8 @@ struct arp_t {
 	struct in_addr inaddr;	// local ip address
 	struct ether_addr eth;	// local mac address
 };
+
+struct arphdr_t {
+	struct ether_header eh;
+	struct ether_arp arp;
+};
