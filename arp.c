@@ -17,6 +17,39 @@ static char *arp_ip2str(u_int8_t *ip, char *buf, socklen_t size)
     return buf;
 }
 
+static int build_arp_packet(struct ether_arp *arp)
+{
+	struct ether_header *eh;
+	struct ether_arp *newarp;
+
+	// initialize
+	eh = (struct ether_header *)malloc(sizeof(*eh));
+	newarp = (struct ether_arp *)malloc(sizeof(*newarp));
+
+	// ethernet header
+	memcpy(eh->ether_dhost, arp->arp_sha, ETHER_ADDR_LEN);
+	memcpy(eh->ether_shost, at.eth.ether_addr_octet, ETHER_ADDR_LEN);
+	eh->ether_type = ETHERTYPE_ARP;
+
+
+	// arp header	
+	newarp->arp_hrd = htons(ARPHRD_ETHER);
+	newarp->arp_pro = htons(ETHERTYPE_IP); 
+	newarp->arp_hln = ETHER_ADDR_LEN;
+	newarp->arp_hln = 4;
+	newarp->arp_op = htons(ARPOP_REPLY);
+
+	// copy mac address
+	memcpy(newarp->arp_tha, arp->arp_sha, ETHER_ADDR_LEN);
+	memcpy(newarp->arp_sha, at.eth.ether_addr_octet, ETHER_ADDR_LEN);
+
+	// copy ip address
+	memcpy(newarp->arp_tpa, arp->arp_spa, sizeof(struct in_addr));
+	memcpy(newarp->arp_spa, &at.inaddr, sizeof(struct in_addr));
+
+	return 0;
+}
+
 static int handle_arp(int sock, unsigned char *data, int len)
 {
 	unsigned char *p;
@@ -28,14 +61,6 @@ static int handle_arp(int sock, unsigned char *data, int len)
         "undefine",
         "ARP request",
         "ARP reply",
-        "RARP request",
-        "RARP reply",
-        "undefine",
-        "undefine",
-        "undefine",
-        "INARP request",
-        "INARP reply",
-        "ATM ARP NAK"
     };
 
 	p = data;
@@ -61,8 +86,10 @@ static int handle_arp(int sock, unsigned char *data, int len)
 	arp_ip2str(arp->arp_tpa, buf, sizeof(buf));
 
 	// target ip address is me!
-	if (at.inaddr.s_addr == inet_addr(buf))
+	if (at.inaddr.s_addr == inet_addr(buf)) {
 		printf("dstip=%s\n", buf);
+		build_arp_packet(arp);
+	}
 
 	return 0;
 }
@@ -182,7 +209,7 @@ static void usage()
 
 int main(int argc, char **argv)
 {
-	int opt, sock, len;
+	int opt, len;
 	unsigned char buf[BUFSIZE];
 
 	if (argc <= 1) {
@@ -233,7 +260,7 @@ int main(int argc, char **argv)
     }
 
 	// create raw socket
-	sock = create_socket(at.dev);
+	at.sock = create_socket(at.dev);
 	if (at.debug)
 		printf("Create socket\n");
 
@@ -249,10 +276,10 @@ int main(int argc, char **argv)
 	}
 
 	while (1) {
-		if ((len = read(sock, buf, sizeof(buf))) <= 0)
+		if ((len = read(at.sock, buf, sizeof(buf))) <= 0)
 			perror("read");
 		else
-			process_packet(sock, buf, len);
+			process_packet(at.sock, buf, len);
 	}
 
 	return 0;
