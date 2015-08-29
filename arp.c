@@ -21,11 +21,22 @@ static struct arphdr_t* build_arp_packet(struct ether_arp *arp)
 {
 	struct arphdr_t newarp;
 	struct arphdr_t *p;
+	char buf[256]; // for debug
 
 	// ethernet header
 	memcpy(newarp.eh.ether_dhost, arp->arp_sha, ETHER_ADDR_LEN);
 	memcpy(newarp.eh.ether_shost, at.eth.ether_addr_octet, ETHER_ADDR_LEN);
 	newarp.eh.ether_type = ETHERTYPE_ARP;
+	printf("Ether:Dest MAC Address : %02x:%02x:%02x:%02x:%02x:%02x ",
+                newarp.eh.ether_dhost[0], newarp.eh.ether_dhost[1],
+                newarp.eh.ether_dhost[2], newarp.eh.ether_dhost[3],
+                newarp.eh.ether_dhost[4], newarp.eh.ether_dhost[5]);
+	printf("Source MAC Address : %02x:%02x:%02x:%02x:%02x:%02x ",
+                newarp.eh.ether_shost[0], newarp.eh.ether_shost[1],
+                newarp.eh.ether_shost[2], newarp.eh.ether_shost[3],
+                newarp.eh.ether_shost[4], newarp.eh.ether_shost[5]);
+	printf("Ethertype:0x%x\n", newarp.eh.ether_type);
+
 
 	// arp header	
 	newarp.arp.arp_hrd = htons(ARPHRD_ETHER);
@@ -33,17 +44,32 @@ static struct arphdr_t* build_arp_packet(struct ether_arp *arp)
 	newarp.arp.arp_hln = ETHER_ADDR_LEN;
 	newarp.arp.arp_hln = 4;
 	newarp.arp.arp_op = htons(ARPOP_REPLY);
+	printf("arpop:%d\n", ntohs(newarp.arp.arp_op));
 
 	// copy mac address
 	memcpy(newarp.arp.arp_tha, arp->arp_sha, ETHER_ADDR_LEN);
 	memcpy(newarp.arp.arp_sha, at.eth.ether_addr_octet, ETHER_ADDR_LEN);
 
+	printf("Arp:Target MAC Address : %02x:%02x:%02x:%02x:%02x:%02x ",
+                newarp.arp.arp_tha[0], newarp.arp.arp_tha[1],
+                newarp.arp.arp_tha[2], newarp.arp.arp_tha[3],
+                newarp.arp.arp_tha[4], newarp.arp.arp_tha[5]);
+
+	printf("source MAC Address : %02x:%02x:%02x:%02x:%02x:%02x\n",
+                newarp.arp.arp_sha[0], newarp.arp.arp_sha[1],
+                newarp.arp.arp_sha[2], newarp.arp.arp_sha[3],
+                newarp.arp.arp_sha[4], newarp.arp.arp_sha[5]);
+
+
 	// copy ip address
 	memcpy(newarp.arp.arp_tpa, arp->arp_spa, sizeof(struct in_addr));
 	memcpy(newarp.arp.arp_spa, &at.inaddr, sizeof(struct in_addr));
 
-	p = &newarp;
+	printf("Arp:Dest IPAddress: %s ", arp_ip2str(newarp.arp.arp_tpa, buf, sizeof(buf)));
+	printf("Source IPAddress: %s\n", arp_ip2str(newarp.arp.arp_spa, buf, sizeof(buf)));
 
+	p = &newarp;
+	
 	return p;
 }
 
@@ -85,9 +111,11 @@ static int handle_arp(unsigned char *data, int len)
 
 	// target ip address is me!
 	if (at.inaddr.s_addr == inet_addr(buf)) {
-		printf("dstip=%s\n", buf);
 		newarp = build_arp_packet(arp);
-		write(at.sock, newarp, sizeof(struct arphdr_t));
+		if (write(at.sock, &newarp, sizeof(struct arphdr_t)) < 0) {
+			perror("write");
+			return -1;
+		}
 	}
 
 	return 0;
