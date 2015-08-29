@@ -2,14 +2,6 @@
 
 struct arp_t at;
 
-static char *ether_ntoa_r(u_char *hwaddr, char *buf, socklen_t size)
-{
-    snprintf(buf, size, "%02x:%02x:%02x:%02x:%02x:%02x",
-        hwaddr[0],hwaddr[1],hwaddr[2],hwaddr[3],hwaddr[4],hwaddr[5]);
-
-    return buf;
-}
-
 static char *arp_ip2str(u_int8_t *ip, char *buf, socklen_t size)
 {
     snprintf(buf, size, "%u.%u.%u.%u",ip[0],ip[1],ip[2],ip[3]);
@@ -21,98 +13,56 @@ static struct arphdr_t* build_arp_packet(struct ether_arp *arp)
 {
 	struct arphdr_t newarp;
 	struct arphdr_t *p;
-	char buf[256]; // for debug
 
 	// ethernet header
 	memcpy(newarp.eh.ether_dhost, arp->arp_sha, ETHER_ADDR_LEN);
 	memcpy(newarp.eh.ether_shost, at.eth.ether_addr_octet, ETHER_ADDR_LEN);
-	newarp.eh.ether_type = ETHERTYPE_ARP;
-	printf("Ether:Dest MAC Address : %02x:%02x:%02x:%02x:%02x:%02x ",
-                newarp.eh.ether_dhost[0], newarp.eh.ether_dhost[1],
-                newarp.eh.ether_dhost[2], newarp.eh.ether_dhost[3],
-                newarp.eh.ether_dhost[4], newarp.eh.ether_dhost[5]);
-	printf("Source MAC Address : %02x:%02x:%02x:%02x:%02x:%02x ",
-                newarp.eh.ether_shost[0], newarp.eh.ether_shost[1],
-                newarp.eh.ether_shost[2], newarp.eh.ether_shost[3],
-                newarp.eh.ether_shost[4], newarp.eh.ether_shost[5]);
-	printf("Ethertype:0x%x\n", newarp.eh.ether_type);
-
+	newarp.eh.ether_type = htons(ETHERTYPE_ARP);
 
 	// arp header	
 	newarp.arp.arp_hrd = htons(ARPHRD_ETHER);
 	newarp.arp.arp_pro = htons(ETHERTYPE_IP); 
 	newarp.arp.arp_hln = ETHER_ADDR_LEN;
-	newarp.arp.arp_hln = 4;
+	newarp.arp.arp_pln = 4;
 	newarp.arp.arp_op = htons(ARPOP_REPLY);
-	printf("arpop:%d\n", ntohs(newarp.arp.arp_op));
 
 	// copy mac address
 	memcpy(newarp.arp.arp_tha, arp->arp_sha, ETHER_ADDR_LEN);
 	memcpy(newarp.arp.arp_sha, at.eth.ether_addr_octet, ETHER_ADDR_LEN);
 
-	printf("Arp:Target MAC Address : %02x:%02x:%02x:%02x:%02x:%02x ",
-                newarp.arp.arp_tha[0], newarp.arp.arp_tha[1],
-                newarp.arp.arp_tha[2], newarp.arp.arp_tha[3],
-                newarp.arp.arp_tha[4], newarp.arp.arp_tha[5]);
-
-	printf("source MAC Address : %02x:%02x:%02x:%02x:%02x:%02x\n",
-                newarp.arp.arp_sha[0], newarp.arp.arp_sha[1],
-                newarp.arp.arp_sha[2], newarp.arp.arp_sha[3],
-                newarp.arp.arp_sha[4], newarp.arp.arp_sha[5]);
-
-
 	// copy ip address
 	memcpy(newarp.arp.arp_tpa, arp->arp_spa, sizeof(struct in_addr));
 	memcpy(newarp.arp.arp_spa, &at.inaddr, sizeof(struct in_addr));
-
-	printf("Arp:Dest IPAddress: %s ", arp_ip2str(newarp.arp.arp_tpa, buf, sizeof(buf)));
-	printf("Source IPAddress: %s\n", arp_ip2str(newarp.arp.arp_spa, buf, sizeof(buf)));
 
 	p = &newarp;
 	
 	return p;
 }
 
-static int handle_arp(unsigned char *data, int len)
+static int handle_arp(unsigned char *data)
 {
-	unsigned char *p;
-	int lest;	
+	u_char *p;
 	struct ether_arp *arp;
  	struct arphdr_t *newarp;
-	char buf[256];
+	char dst_addr[16];
+	u_char buffer[sizeof(struct ether_header) + sizeof(struct ether_arp)];
 
-	static char *op[] = {
-        "undefine",
-        "ARP request",
-        "ARP reply",
-    };
-
-	p = data;
-	lest = len;
-
-	if (lest < sizeof(struct ether_arp)) {
-		fprintf(stderr, "lest(%d) < sizeof(struct ether_arp)\n", lest);
-		return -1;
-	}
-	
-	arp = (struct ether_arp *)p;
-	p += sizeof(struct ether_arp);
-	lest -= sizeof(struct ether_arp);
-
-	if (at.debug) {
-		printf("srcmac=%s ", ether_ntoa_r(arp->arp_sha, buf, sizeof(buf)));
-		printf("dstmac=%s ", ether_ntoa_r(arp->arp_tha, buf, sizeof(buf)));
-		printf("srcip=%s ", arp_ip2str(arp->arp_spa, buf, sizeof(buf)));
-		printf("dstip=%s ", arp_ip2str(arp->arp_tpa, buf, sizeof(buf)));
-		printf("(%s)\n", op[ntohs(arp->arp_op)]);
-	}
-
-	arp_ip2str(arp->arp_tpa, buf, sizeof(buf));
+	arp = (struct ether_arp *)data;
+	arp_ip2str(arp->arp_tpa, dst_addr, sizeof(dst_addr));
 
 	// target ip address is me!
-	if (at.inaddr.s_addr == inet_addr(buf)) {
+	if ((arp->arp_op == htons(ARPOP_REQUEST)) && (at.inaddr.s_addr == inet_addr(dst_addr))) {
 		newarp = build_arp_packet(arp);
-		if (write(at.sock, &newarp, sizeof(struct arphdr_t)) < 0) {
+		memset(buffer, 0, sizeof(buffer));
+
+		p = buffer;
+		memcpy(p, &newarp->eh, sizeof(struct ether_header));
+    	p += sizeof(struct ether_header);
+		memcpy(p, &newarp->arp, sizeof(struct ether_arp));
+    	p += sizeof(struct ether_arp);
+		int total = p - buffer;
+	
+		if (write(at.sock, buffer, total) < 0) {
 			perror("write");
 			return -1;
 		}
@@ -121,7 +71,7 @@ static int handle_arp(unsigned char *data, int len)
 	return 0;
 }
 
-static int process_packet(unsigned char *buf, int len)
+static void process_packet(unsigned char *buf, int len)
 {
 	unsigned char *p;
 	int lest;
@@ -132,7 +82,7 @@ static int process_packet(unsigned char *buf, int len)
 
 	if (lest < sizeof(struct ether_header)) {
 		fprintf(stderr, "lest(%d) < sizeof(struct ether_header)\n", lest);
-		return -1;
+		exit(1);
 	}
 
 	eh = (struct ether_header *)p;
@@ -140,9 +90,7 @@ static int process_packet(unsigned char *buf, int len)
 	lest -= sizeof(struct ether_header);
 
 	if (ntohs(eh->ether_type) == ETHERTYPE_ARP)  
-		handle_arp(p, lest);
-
-	return 0;
+		handle_arp(p);
 }
 
 static void get_local_address(struct arp_t *p)
@@ -217,13 +165,6 @@ static int create_socket(char *dev)
 	return sock;
 }
 
-static void init_arp_data(struct arp_t *p)
-{
-    p->debug = 0;
-    p->daemon = 0;
-	memset(p->dev, 0, sizeof(DEVSIZE));
-}
-
 static void usage()
 {
     fprintf(stderr, "Usage:\n");
@@ -245,7 +186,7 @@ int main(int argc, char **argv)
 	}
 
 	// initialize arp data
-	init_arp_data(&at);
+	memset(&at, 0, sizeof(struct arp_t));
 
 	while ((opt = getopt(argc, argv, "hi:vd")) > 0) {
 		switch (opt) {

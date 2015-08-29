@@ -18,6 +18,7 @@ struct arp_t {
 	int debug; 				// debug flag
 	int daemon; 			// daemon flag
 	int sock;				// socket interface
+	int sock2;				// socket interface
 	char dev[DEVSIZE];  	// interface name
 	struct in_addr inaddr;	// local ip address
 	struct ether_addr eth;	// local mac address
